@@ -143,7 +143,7 @@ class DynamicLamp : public LedGroup {
     void turnOffSlowly() {
       CHSV color;
 
-      for (int i=0; i<=m_staticColor.val; i--) {
+      for (int i = m_staticColor.val; i>=0; i--) {
         color = CHSV(m_staticColor.hue, m_staticColor.sat, i);
         setColor(color);
 
@@ -236,7 +236,6 @@ class House {
     unsigned long m_lastTick;
     uint16_t m_eventDelay;
     uint16_t m_eventCounter;
-    const uint16_t m_eventCounter;
     const uint16_t m_ToggleLightChancePerSecond = EXPLOSION_CHANCE;
 
     // Figures out which group we are
@@ -264,8 +263,9 @@ class House {
 
     }
 
-    void createGroup(LED_TYPE t_type, uint32_t*, indexes, size_t length) {
-      LedGropu* newGroup = nullptr;
+    // Creates a gropu to manage and assigns lights in them
+    void createGroup(LED_TYPE t_type, uint32_t* indexes, size_t length) {
+      LedGroup* newGroup = nullptr;
       switch (t_type) {
         case TYPE_STATIC:
           newGroup = new StaticLamp(indexes, length, STATIC_COLOR);
@@ -275,24 +275,188 @@ class House {
           break;
         case TYPE_EXPLOSION:
           hasEvents = true;
-          new_group = new ExplosionLamp(indexes, length);
+          newGroup = new ExplosionLamp(indexes, length);
           break;
       }
+      if (newGroup != nullptr) {
+        insertGroup(newGroup);
+      }
     }
+
+    // Sets all the colors in a group
+    void setAllColor(CHSV color) {
+      LedGroup* current = groups;
+      while (current != nullptr) {
+        current->setColor(color);
+        current = current->nextGroup;
+      }
+    }
+
+    bool normalTick() {
+      LedGroup* current = groups;
+      while (current != nullptr) {
+        current->tick();
+        current = current->nextGroup;
+      }
+      return true;
+    }
+
+    bool specialTick(LED_TYPE type) {
+      LedGroup* current = groups;
+      while (current != nullptr) {
+        if (current->getType() == type) {
+          current->specialTick();
+        }
+        current = current->nextGroup;
+      }
+    }
+
+    void eventTick() {
+      if(millis() - m_lastTick > m_eventDelay) {
+        m_lastTick = millis();
+        
+        switch (m_eventPos) {
+          case EVENT_ALL_BLACK:
+            m_eventDelay = 500;
+            setAllColor(CHSV(0, 0, 0));
+            m_eventPos = EVENT_STATIC_FLICKER;
+            break;
+
+          // This is blocking. Need to change to timers not delays.
+          case EVENT_STATIC_FLICKER:
+            for (int i=0; i<random(3,6); i++) {
+              setAllColor(STATIC_COLOR);
+              FastLED.show();
+              delay(random(0, 250));
+              setAllColor(CHSV(0, 0, 0));
+              FastLED.show();
+              delay(random(0, 450));
+            }
+            setAllColor(CHSV(0, 0, 0));
+            delay(2000);
+            m_eventPos = EVENT_RANDOM_HUE_EXPLOSION;
+            break;
+
+          case EVENT_RANDOM_HUE_EXPLOSION:
+            m_lastTick = millis();
+            specialTick(TYPE_EXPLOSION);
+            resetEvent();
+            break;
+        }
+      }
+    }
+
+    // Fades to black 
+    void resetEvent() {
+      m_eventRunning = false;
+      m_eventPos = EVENT_ALL_BLACK;
+    }
+
+    bool isEventRunning() {
+      if (!hasEvents)
+        return false;
+
+      if (!m_eventRunning) {
+        if (millis() - m_lastTick > 1000) {
+          m_lastTick = millis();
+
+          if (random(0, m_ToggleLightChancePerSecond) == 0) {
+            m_eventRunning = true;
+          }
+
+        }
+      }
+      return m_eventRunning;
+    }
+
+    void tick() {
+      if (isEventRunning() == false) {
+        normalTick();
+      } else {
+        eventTick();
+      }
+    }
+};
+
+// Defines how many houses we will be using
+// Ollivanders, Scribbulous, Quality Quidditch Supplies
+#define NUM_HOUSES 4
+//#define NUM_HOUSES 1
+House* houses[NUM_HOUSES];
+
+// Defines which leds go into which house
+// Ollivanders
+// LEDs 0-6
+uint32_t house1_floor[] = {0, 2, 4, 6}; 
+uint32_t house1_room1[] = {3};
+uint32_t house1_explosion[] = {1, 5, 0, 6};
+
+// Scribbulous
+// LEDs 7-12
+uint32_t house2_floor[] = {8, 9, 10, 11};
+uint32_t house2_room1[] = {7};
+uint32_t house2_room2[] = {12};
+
+// Quality Quidditch Supplies
+// LEDs 14-18
+uint32_t house3_floor[] = {14, 15, 16};
+uint32_t house3_room1[] = {17};
+uint32_t house3_room2[] = {18};
+
+// 
+// LEDs 13
+uint32_t streetlight[] = {13};
+
+void createGroup() {
 
 }
 
 void setup() {
   // put your setup code here, to run once:
-    delay(1000);
-    FastLED.addLeds<LED_VER, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS);
-    
+  randomSeed(analogRead(0));
+  Serial.begin(9600);
+  while (!Serial);
+
+  //FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, NUM_LEDS);
+  //FastLED.addLeds<LED_VER, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS);
+
+  FastLED.addLeds<NEOPIXEL, LED_PIN>(leds, NUM_LEDS);
+  // Which house and which lamps are which (static/dynamic/explosion)
+  // House 0 == Ollivanders
+  houses[0] = new House();
+  houses[0]->createGroup(TYPE_STATIC, &house1_floor[0], (size_t)(sizeof(house1_floor) / sizeof(house1_floor[0])));
+  houses[0]->createGroup(TYPE_DYNAMIC, &house1_room1[0], (size_t)(sizeof(house1_room1) / sizeof(house1_room1[0])));
+  houses[0]->createGroup(TYPE_EXPLOSION, &house1_explosion[0], (size_t)(sizeof(house1_explosion) / sizeof(house1_explosion[0])));
+
+
+
+  // House 1
+  //
+  houses[1] = new House();
+  houses[1]->createGroup(TYPE_STATIC, &house2_floor[0], (size_t)(sizeof(house2_floor) / sizeof(house2_floor[0])));
+  houses[1]->createGroup(TYPE_DYNAMIC, &house2_room1[0], (size_t)(sizeof(house2_room1) / sizeof(house2_room1[0])));
+  houses[1]->createGroup(TYPE_DYNAMIC, &house2_room2[0], (size_t)(sizeof(house2_room2) / sizeof(house2_room2[0])));
  
+  // House 2
+  //
+  houses[2] = new House();
+  houses[2]->createGroup(TYPE_STATIC, &house3_floor[0], (size_t)(sizeof(house3_floor) / sizeof(house3_floor[0])));
+  houses[2]->createGroup(TYPE_DYNAMIC, &house3_room1[0], (size_t)(sizeof(house3_room1) / sizeof(house3_room1[0])));
+  houses[2]->createGroup(TYPE_DYNAMIC, &house3_room2[0], (size_t)(sizeof(house3_room2) / sizeof(house3_room2[0])));
+
+  // House 3 == Street Lamp
+  // Probably won't use
+  houses[3] = new House();
+  houses[3]->createGroup(TYPE_STATIC, &streetlight[0], (size_t)(sizeof(streetlight) / sizeof(streetlight[0])));
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
-  
-
+  // Lights up each individual house
+  for (int i=0; i<NUM_HOUSES; i++) {
+    houses[i]->tick();
+  }
+  FastLED.show();
+  delay(30);
 }
 
