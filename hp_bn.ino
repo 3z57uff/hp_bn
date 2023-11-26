@@ -10,10 +10,12 @@
 // Static Colors
 #define STATIC_COLOR CHSV(30, 208, 127)
 #define DYNAMIC_COLOR CHSV(30, 208, 127)
+#define MURDER_COLOR CHSV(95, 255, 255)
 
 // Define explosion chances
 #define EXPLOSION_CHANCE 30  // 1 in x chance per second
 #define DYNAMIC_CHANCE 10  // 1 in x chance per second
+#define MURDER_CHANCE 10 // 1 in x chance per second
 
 // After triggering a dynamic light, how long should we wait before we can toggle it again
 // Random value will generate between these limits, other values will be ignored
@@ -30,14 +32,17 @@ enum LED_TYPE {
   TYPE_STATIC, 
   TYPE_DYNAMIC,
   TYPE_EXPLOSION,
-  TYPE_TORCH
+  TYPE_TORCH,
+  TYPE_MURDER
 };
 
 enum DISRUPTIVE_EVENT_STAGES {
   EVENT_ALL_BLACK,
   EVENT_STATIC_FLICKER,
   EVENT_ALL_FLASH,
-  EVENT_RANDOM_HUE_EXPLOSION
+  EVENT_RANDOM_HUE_EXPLOSION,
+  EVENT_MURDER_BLACK,
+  EVENT_RANDOM_MURDER
 };
 
 class LedGroup {
@@ -226,6 +231,48 @@ class ExplosionLamp : public LedGroup {
     }
 };
 
+// Class for Avade Kedavera in Knockturn Alley
+// Reusing a bunch of the explosion lamp stuff
+// Will basically stay off til it gets cast
+class MurderLamp : public LedGroup {
+  private:
+    uint16_t explosionFadeDurationMs = 400;
+    uint16_t explosionDurationMs = 50;
+    bool running;
+  public:
+    MurderLamp(uint32_t* t_indexes, size_t t_indexCount) : LedGroup(t_indexes, t_indexCount, TYPE_MURDER), running(false) {
+    }
+
+    void tick() {
+    }
+
+    bool specialTick() {
+      uint8_t hue = random(0, 255);
+      CHSV color;
+      for (int i=0; i < 255; i+=6) {
+        color = CHSV(hue, 255, i);
+        setColor(color);
+        if (random(0, 400) == 5)
+          specialTick();
+        FastLED.show();
+        delay(2);
+      }
+      
+      // wait before next action
+      delay(random(0,1000));
+
+      for (int i = 255; i >= 0; i--) {
+        color = CHSV(hue, 255, i);
+        if (random(0,400) == 5)
+          specialTick();
+        setColor(color);
+        FastLED.show();
+      }
+      return false;
+    }
+};
+
+
 // Manages our LED groups per house/building
 class House {
   private:
@@ -276,6 +323,10 @@ class House {
         case TYPE_EXPLOSION:
           hasEvents = true;
           newGroup = new ExplosionLamp(indexes, length);
+          break;
+        case TYPE_MURDER:
+          hasEvents = true;
+          newGroup = new MurderLamp(indexes, length);
           break;
       }
       if (newGroup != nullptr) {
@@ -342,9 +393,56 @@ class House {
             specialTick(TYPE_EXPLOSION);
             resetEvent();
             break;
+
+          case EVENT_RANDOM_MURDER:
+            m_lastTick = millis();
+            specialTick(TYPE_MURDER);
+            resetEvent();
+            break;
         }
       }
     }
+
+     void murderTick() {
+      if(millis() - m_lastTick > m_eventDelay) {
+        m_lastTick = millis();
+        
+        switch (m_eventPos) {
+          case EVENT_ALL_BLACK:
+            m_eventDelay = 500;
+            setAllColor(CHSV(0, 0, 0));
+            m_eventPos = EVENT_STATIC_FLICKER;
+            break;
+
+          // This is blocking. Need to change to timers not delays.
+          case EVENT_STATIC_FLICKER:
+            for (int i=0; i<random(3,6); i++) {
+              setAllColor(MURDER_COLOR);
+              FastLED.show();
+              delay(random(0, 250));
+              setAllColor(CHSV(0, 0, 0));
+              FastLED.show();
+              delay(random(0, 450));
+            }
+            setAllColor(CHSV(0, 0, 0));
+            delay(2000);
+            m_eventPos = EVENT_RANDOM_HUE_EXPLOSION;
+            break;
+
+          case EVENT_RANDOM_HUE_EXPLOSION:
+            m_lastTick = millis();
+            specialTick(TYPE_EXPLOSION);
+            resetEvent();
+            break;
+
+          case EVENT_RANDOM_MURDER:
+            m_lastTick = millis();
+            specialTick(TYPE_MURDER);
+            resetEvent();
+            break;
+        }
+      }
+     }
 
     // Fades to black 
     void resetEvent() {
@@ -376,6 +474,14 @@ class House {
         eventTick();
       }
     }
+
+    void mtick() {
+      if (isEventRunning() == false) {
+        normalTick();
+      } else {
+        murderTick();
+      }
+    }
 };
 
 // Defines how many houses we will be using
@@ -391,7 +497,7 @@ uint32_t house1_floor[] = {0, 2, 4, 6};
 uint32_t house1_room1[] = {3};
 uint32_t house1_explosion[] = {1, 5, 0, 6};
 
-// Scribbulous
+// Scribbulus
 // LEDs 7-12
 uint32_t house2_floor[] = {8, 9, 10, 11};
 uint32_t house2_room1[] = {7};
@@ -429,7 +535,6 @@ void setup() {
   houses[0]->createGroup(TYPE_EXPLOSION, &house1_explosion[0], (size_t)(sizeof(house1_explosion) / sizeof(house1_explosion[0])));
 
 
-
   // House 1
   //
   houses[1] = new House();
@@ -447,15 +552,18 @@ void setup() {
   // House 3 == Street Lamp
   // Probably won't use
   houses[3] = new House();
-  houses[3]->createGroup(TYPE_STATIC, &streetlight[0], (size_t)(sizeof(streetlight) / sizeof(streetlight[0])));
+  //houses[3]->createGroup(TYPE_STATIC, &streetlight[0], (size_t)(sizeof(streetlight) / sizeof(streetlight[0])));
+  houses[3]->createGroup(TYPE_MURDER, &streetlight[0], (size_t)(sizeof(streetlight) / sizeof(streetlight[0])));
+
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
   // Lights up each individual house
-  for (int i=0; i<NUM_HOUSES; i++) {
+  for (int i=0; i<NUM_HOUSES-1; i++) {
     houses[i]->tick();
   }
+  houses[3]->mtick();
   FastLED.show();
   delay(30);
 }
