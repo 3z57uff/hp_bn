@@ -2,7 +2,7 @@
 #include <FastLED.h>
 
 // LED Setup
-#define NUM_LEDS 19
+#define NUM_LEDS 20
 #define LED_PIN 2
 #define LED_VER WS2812B
 #define COLOR_ORDER GRB
@@ -10,10 +10,10 @@
 // Static Colors
 #define STATIC_COLOR CHSV(30, 208, 127)
 #define DYNAMIC_COLOR CHSV(30, 208, 127)
-#define MURDER_COLOR CHSV(95, 255, 255)
+#define MURDER_COLOR CHSV(95, 255, 127)
 
 // Define explosion chances
-#define EXPLOSION_CHANCE 30  // 1 in x chance per second
+#define EXPLOSION_CHANCE 20  // 1 in x chance per second
 #define DYNAMIC_CHANCE 10  // 1 in x chance per second
 #define MURDER_CHANCE 10 // 1 in x chance per second
 
@@ -493,25 +493,33 @@ House* houses[NUM_HOUSES];
 // Defines which leds go into which house
 // Ollivanders
 // LEDs 0-6
+/*
 uint32_t house1_floor[] = {0, 2, 4, 6}; 
 uint32_t house1_room1[] = {3};
 uint32_t house1_explosion[] = {1, 5, 0, 6};
-
-// Scribbulus
-// LEDs 7-12
-uint32_t house2_floor[] = {8, 9, 10, 11};
-uint32_t house2_room1[] = {7};
-uint32_t house2_room2[] = {12};
+*/
+uint32_t house1_floor[] = {0, 2, 3, 5}; 
+uint32_t house1_room1[] = {6};
+uint32_t house1_room2[] = {7};
+uint32_t house1_explosion[] = {1, 4, 0, 5};
 
 // Quality Quidditch Supplies
-// LEDs 14-18
-uint32_t house3_floor[] = {14, 15, 16};
-uint32_t house3_room1[] = {17};
-uint32_t house3_room2[] = {18};
+// LEDs 8-14
+uint32_t house2_floor[] = {8, 9, 10};
+uint32_t house2_room1[] = {11};
+uint32_t house2_room2[] = {12};
+uint32_t house2_room3[] = {13};
+uint32_t house2_room4[] = {14};
+
+// Quality Quidditch Supplies
+// LEDs 16-19
+uint32_t house3_floor[] = {16, 17};
+uint32_t house3_room1[] = {18};
+uint32_t house3_room2[] = {19};
 
 // 
-// LEDs 13
-uint32_t streetlight[] = {13};
+// LEDs 15
+uint32_t alley[] = {15};
 
 void createGroup() {
 
@@ -532,28 +540,31 @@ void setup() {
   houses[0] = new House();
   houses[0]->createGroup(TYPE_STATIC, &house1_floor[0], (size_t)(sizeof(house1_floor) / sizeof(house1_floor[0])));
   houses[0]->createGroup(TYPE_DYNAMIC, &house1_room1[0], (size_t)(sizeof(house1_room1) / sizeof(house1_room1[0])));
+  houses[0]->createGroup(TYPE_DYNAMIC, &house1_room2[0], (size_t)(sizeof(house1_room2) / sizeof(house1_room2[0])));
   houses[0]->createGroup(TYPE_EXPLOSION, &house1_explosion[0], (size_t)(sizeof(house1_explosion) / sizeof(house1_explosion[0])));
 
 
   // House 1
-  //
+  // Quality Quidditch Supplies
   houses[1] = new House();
   houses[1]->createGroup(TYPE_STATIC, &house2_floor[0], (size_t)(sizeof(house2_floor) / sizeof(house2_floor[0])));
   houses[1]->createGroup(TYPE_DYNAMIC, &house2_room1[0], (size_t)(sizeof(house2_room1) / sizeof(house2_room1[0])));
   houses[1]->createGroup(TYPE_DYNAMIC, &house2_room2[0], (size_t)(sizeof(house2_room2) / sizeof(house2_room2[0])));
+  houses[1]->createGroup(TYPE_DYNAMIC, &house2_room3[0], (size_t)(sizeof(house2_room3) / sizeof(house2_room3[0])));
+  houses[1]->createGroup(TYPE_DYNAMIC, &house2_room4[0], (size_t)(sizeof(house2_room4) / sizeof(house2_room4[0])));
  
   // House 2
-  //
+  // Scribbulous
   houses[2] = new House();
   houses[2]->createGroup(TYPE_STATIC, &house3_floor[0], (size_t)(sizeof(house3_floor) / sizeof(house3_floor[0])));
   houses[2]->createGroup(TYPE_DYNAMIC, &house3_room1[0], (size_t)(sizeof(house3_room1) / sizeof(house3_room1[0])));
   houses[2]->createGroup(TYPE_DYNAMIC, &house3_room2[0], (size_t)(sizeof(house3_room2) / sizeof(house3_room2[0])));
 
-  // House 3 == Street Lamp
-  // Probably won't use
+  // House 3 == Knockturn Alley
+  // Custom call to mtick instead of tick
   houses[3] = new House();
   //houses[3]->createGroup(TYPE_STATIC, &streetlight[0], (size_t)(sizeof(streetlight) / sizeof(streetlight[0])));
-  houses[3]->createGroup(TYPE_MURDER, &streetlight[0], (size_t)(sizeof(streetlight) / sizeof(streetlight[0])));
+  houses[3]->createGroup(TYPE_MURDER, &alley[0], (size_t)(sizeof(alley) / sizeof(alley[0])));
 
 }
 
